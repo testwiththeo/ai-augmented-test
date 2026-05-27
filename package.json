@@ -1,14 +1,30 @@
 {
-  "name": "ai-augmented-test",
+  "name": "ai-augmented-test-framework",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "AI-Augmented Test Framework — self-healing, AI-powered test automation with Playwright, LangChain, and ChromaDB",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npx playwright test",
+    "test:headed": "npx playwright test --headed",
+    "test:ui": "npx playwright test --ui",
+    "test:debug": "npx playwright test --debug",
+    "test:api": "npx playwright test src/tests/api/",
+    "report": "npx allure generate allure-results --clean && npx allure open",
+    "postinstall": "npx playwright install chromium"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "playwright",
+    "testing",
+    "automation",
+    "ai-testing",
+    "self-healing",
+    "langchain",
+    "chromadb",
+    "qa",
+    "typescript"
+  ],
+  "author": "Theodores",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "@playwright/test": "^1.60.0",
