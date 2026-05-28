@@ -1,8 +1,10 @@
-   node_modules/
-   test-results/
-   allure-report/
-   allure-results/
-   screenshots/
-   .env
-   *.log
-   dist/
+node_modules/
+test-results/
+allure-report/
+allure-results/
+screenshots/
+.env
+*.log
+dist/
+docs
+playwright-report
