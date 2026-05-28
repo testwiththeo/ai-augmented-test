@@ -1,6 +1,11 @@
 import { type Locator, type Page } from "@playwright/test";
 import { suggestSelectors } from "./openai-client";
 import { captureDomSnapshot } from "./dom-snapshot";
+import {
+  findHealedSelector,
+  storeHealedSelector,
+} from "./chroma-client";
+import type { HealedSelectorRecord } from "./chroma-client";
 
 interface HealingResult {
   healed: boolean;
@@ -10,14 +15,30 @@ interface HealingResult {
 }
 
 /**
- * Try to heal a failed locator by getting alternative selectors from AI.
+ * Try to heal a failed locator by checking ChromaDB cache first, then AI.
  * Returns the first working selector, or null if all fail.
  */
 async function healSelector(
   page: Page,
   originalDescription: string,
-  domSnippet: string
-): Promise<string | null> {
+  domSnippet: string,
+  pageUrl: string
+): Promise<{ selector: string | null; fromCache: boolean }> {
+  // Step 1: Check ChromaDB cache
+  const cached = await findHealedSelector(
+    originalDescription,
+    originalDescription,
+    pageUrl
+  );
+  if (cached) {
+    const locator = page.locator(cached);
+    const visible = await locator.isVisible({ timeout: 2000 }).catch(() => false);
+    if (visible) {
+      return { selector: cached, fromCache: true };
+    }
+  }
+
+  // Step 2: Fall back to OpenAI
   const suggestions = await suggestSelectors(
     originalDescription,
     domSnippet,
@@ -26,19 +47,17 @@ async function healSelector(
 
   for (const suggestion of suggestions) {
     try {
-      // Parse the suggestion - it might be a Playwright code or CSS selector
       const selector = extractSelector(suggestion);
       const locator = page.locator(selector);
       const visible = await locator.isVisible({ timeout: 2000 });
       if (visible) {
-        return suggestion;
+        return { selector: suggestion, fromCache: false };
       }
     } catch {
-      // Try next suggestion
       continue;
     }
   }
-  return null;
+  return { selector: null, fromCache: false };
 }
 
 /**
@@ -92,10 +111,12 @@ export async function withHealing<T>(
     console.log(`[Healing] Locator failed: "${description}". Attempting to heal...`);
 
     const domSnippet = await captureDomSnapshot(page, description);
-    const alternative = await healSelector(page, description, domSnippet);
+    const result = await healSelector(page, description, domSnippet, page.url());
+    const alternative = result.selector;
 
     if (alternative) {
-      console.log(`[Healing] ✅ Healed! "${description}" → "${alternative}"`);
+      console.log(`[Healing] ✅ Healed! "${description}" → "${alternative}"${result.fromCache ? ' (from cache)' : ''}`);
+
       healing = {
         healed: true,
         originalSelector: description,
@@ -103,10 +124,24 @@ export async function withHealing<T>(
         attempts: 1,
       };
 
+      // Store in ChromaDB if it came from OpenAI (cache for future)
+      if (!result.fromCache) {
+        const record: HealedSelectorRecord = {
+          id: `heal-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+          originalSelector: description,
+          healedSelector: alternative,
+          elementDescription: description,
+          pageUrl: page.url(),
+          domSnippet,
+          timestamp: new Date().toISOString(),
+        };
+        storeHealedSelector(record).catch(() => {});
+      }
+
       // Retry with the healed locator
       const healedLocator = page.locator(alternative);
-      const result = await action();
-      return { result, healing };
+      const result_data = await action();
+      return { result: result_data, healing };
     }
 
     console.log(`[Healing] ❌ Could not heal "${description}"`);
